@@ -6,11 +6,16 @@ import sys
 Rotates the given number left by one. Defaults to a 5-bit word.
 '''
 def left_shift(num, length=5):
-	num = (num << 1) + get_bit(num, 0, length);
-	return num;
+	num = (num << 1) + get_bit(num, 1, length);
+	
+	mask = 0;
+	for x in range(length):
+		mask = (mask << 1) + 1;
+	
+	return num & mask;
 
 '''
-Returns the bit value of the 'pos'th bit in num. Defaults to little endian positioning. (MSB is position 0)
+Returns the bit value of the 'pos'th bit in num. Defaults to little endian positioning. (MSB is position 1)
 '''
 def get_bit(num, pos, size=8, little_endian=True):
 	if(little_endian):
@@ -48,7 +53,7 @@ def IP_inverse(num):
 	return permutate(num, [4, 1, 3, 5, 7, 2, 8, 6], input_size=8);
 
 def E_P(num):
-	return permutate(num, [4, 1, 2, 3, 2, 3, 4, 1], input_size=8);
+	return permutate(num, [4, 1, 2, 3, 2, 3, 4, 1], input_size=4);
 
 '''
 Performs the S0-box calculation on the 4-bit input 'num'.
@@ -59,8 +64,8 @@ def S0(num):
 		   ,(0, 2, 1, 3) 
 		   ,(3, 1, 3, 2) )
 		   
-	row = get_bit(num, 0, 4) * 2 + get_bit(num, 3, 4);
-	col = get_bit(num, 1, 4) * 2 + get_bit(num, 2, 4);
+	row = (get_bit(num, 1, 4) << 1) + get_bit(num, 4, 4);
+	col = (get_bit(num, 2, 4) << 1) + get_bit(num, 3, 4);
 	
 	return box[row][col];
 
@@ -73,8 +78,8 @@ def S1(num):
 		   ,(3, 0, 1, 0) 
 		   ,(2, 1, 0, 3) )
 		   
-	row = get_bit(num, 0, 4) * 2 + get_bit(num, 3, 4);
-	col = get_bit(num, 1, 4) * 2 + get_bit(num, 2, 4);
+	row = (get_bit(num, 1, 4) << 1) + get_bit(num, 4, 4);
+	col = (get_bit(num, 2, 4) << 1) + get_bit(num, 3, 4);
 	
 	return box[row][col];
 
@@ -111,7 +116,7 @@ def f_K(num, subkey):
 		
 	data = E_P(right_input);	
 	data = data ^ subkey;
-	data = (S0(data >> 4) << 4) + S1(data & 0b1111);	
+	data = (S0(data >> 4) << 2) + S1(data & 0b1111);	
 	data = P4(data);	
 	left_output = left_input ^ data;
 		
@@ -191,5 +196,3 @@ def main():
 
 if __name__ == "__main__":
 	main()
-	
-
