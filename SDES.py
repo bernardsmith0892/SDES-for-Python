@@ -1,9 +1,5 @@
 #!/usr/bin/python3.8
 
-import argparse
-import secrets
-import sys
-
 def left_shift(num, length=5):
 	""" Rotates the given number left by one. Defaults to a 5-bit word. """
 	
@@ -148,253 +144,39 @@ def f_K(num, subkey):
 		
 	return (left_output << 4) + right_input
 	
-def encrypt_byte(plaintext, K1, K2):
-	""" Encrypts the provided plaintext byte using the two subkeys, K1 and K2. """	
-	ip = IP(plaintext)
+def F(input, key, encrypt=True):
+	""" Encrypts or decrypts the provided byte using the SDES cipher. 
+	
+	Parameters
+	----------
+	input : bytearray
+		The data to process.
+	key : int
+		The cipher key to use. (10-bits)
+	encrypt : bool
+		Whether to encrypt or decrypt the data. Defaults to encryption.
+	 
+	Returns
+	-------
+	int
+		The encrypted or decrypted byte.
+	"""	
+	
+	ip = IP(input)
+	
+	if encrypt:
+		K1, K2 = generate_subkeys(key)
+	else:
+		K2, K1 = generate_subkeys(key)
 	
 	round = f_K(ip, K1)
 	round = f_K(SW(round), K2)
 	
-	ciphertext = IP_inverse(round)
+	output = IP_inverse(round)
 	
-	return ciphertext
-
-def decrypt_byte(ciphertext, K1, K2):
-	""" Decrypts the provided plaintext byte using the two subkeys, K1 and K2. Calls `encrypt_byte` with the subkeys in reverse order. """	
-	return encrypt_byte(ciphertext, K2, K1)
+	return output
 
 
-def ecb(input_data, key, encrypt=True):
-	""" Encrypt or decrypt the input using SDES in electronic code book (ECB) mode.
-	
-	Parameters
-	----------
-	input_data : bytearray
-		The data to process.
-	key : int
-		The cipher key to use.
-	encrypt : bool
-		Whether to encrypt or decrypt the data. Defaults to encryption.
-	 
-	Returns
-	-------
-	bytearray
-		The ECB processed bytes.
-	"""	
-	
-	K1, K2 = generate_subkeys(key)
-	
-	output = bytearray()
-	for b in input_data:
-		if( encrypt ):
-			processed_byte = encrypt_byte(b, K1, K2)
-		else:
-			processed_byte = decrypt_byte(b, K1, K2)
-		output.append(processed_byte)
-	
-	return bytes(output)
 
 
-def cbc(input_data, key, iv=0x00, encrypt=True):
-	""" Encrypt or decrypt the input using SDES in cipher block chaining (CBC) mode.
-	
-	Parameters
-	----------
-	input_data : bytearray
-		The data to process.
-	key : int
-		The cipher key to use.
-	iv : int
-		The initialization vector to use.
-	encrypt : bool
-		Whether to encrypt or decrypt the data. Defaults to encryption.
-	 
-	Returns
-	-------
-	bytearray
-		The CBC processed bytes.
-	int
-		The IV value to provide to the next chunk of data.
-	"""	
-	
-	K1, K2 = generate_subkeys(key)
-	
-	output = bytearray()
-	for b in input_data:
-		if( encrypt ):
-			intermediate_value = b ^ iv
-			processed_byte = encrypt_byte(intermediate_value, K1, K2)
-			iv = processed_byte	
-		else:
-			intermediate_value = decrypt_byte(b, K1, K2)
-			processed_byte = intermediate_value ^ iv
-			iv = b
-		output.append(processed_byte)
-		
-	return bytes(output), iv
-	
-def ctr(input_data, key, nonce=0x00):
-	""" Encrypt or decrypt the input using SDES in cipher block chaining (CBC) mode.
-	
-	Parameters
-	----------
-	input_data : bytearray
-		The data to process.
-	key : int
-		The cipher key to use.
-	nonce : int
-		The nonce value to use.
-	 
-	Returns
-	-------
-	bytearray
-		The CTR processed bytes.
-	int
-		The nonce value to provide to the next chunk of data.
-	"""	
-	
-	K1, K2 = generate_subkeys(key)
-	
-	output = bytearray()
-	ctr = 0
-	for b in input_data:
-		intermediate_value = encrypt_byte(nonce + ctr, K1, K2)
-		processed_byte = intermediate_value ^ b
-		ctr += 1
-		output.append(processed_byte)
-		
-	return bytes(output), (nonce + ctr)
-	
-def ecb_file(input_filename, output_filename, key, encrypt=True):
-	""" Encrypt or decrypt the file using ECB-SDES and output the result into another file.
-	
-	Parameters
-	----------
-	input_filename : string
-		The name of the file to process.
-	output_filename : string
-		The name of the file to write the processed data to.
-	key : int
-		The cipher key to use.
-	encrypt : bool
-		Whether to encrypt or decrypt the data. Defaults to encryption.
-	"""	
-	with open(input_filename, 'rb') as input_file, open(output_filename, 'wb') as output_file:
-		# Process the file in 64kB chunks
-		while chunk  := bytearray(input_file.read(65535)):
-			output_file.write( ecb(chunk, key, encrypt) )
 
-				
-def cbc_file(input_filename, output_filename, key, iv=0x00, encrypt=True):
-	""" Encrypt or decrypt the file using CBC-SDES and output the result into another file.
-	
-	Parameters
-	----------
-	input_filename : string
-		The name of the file to process.
-	output_filename : string
-		The name of the file to write the processed data to.
-	key : int
-		The cipher key to use.
-	iv : int
-		The initialization vector to use.
-	encrypt : bool
-		Whether to encrypt or decrypt the data. Defaults to encryption.
-	"""	
-	with open(input_filename, 'rb') as input_file, open(output_filename, 'wb') as output_file:
-		# Process the file in 64kB chunks
-		while chunk := bytearray(input_file.read(65535)):
-			output_bytes, iv = cbc(chunk, key, iv, encrypt)
-			output_file.write( output_bytes )
-			
-def ctr_file(input_filename, output_filename, key, nonce=0x00):
-	""" Encrypt or decrypt the file using CTR-SDES and output the result into another file.
-	
-	Parameters
-	----------
-	input_filename : string
-		The name of the file to process.
-	output_filename : string
-		The name of the file to write the processed data to.
-	key : int
-		The cipher key to use.
-	nonce : int
-		The nonce value to use.
-	"""	
-	with open(input_filename, 'rb') as input_file, open(output_filename, 'wb') as output_file:
-		# Process the file in 64kB chunks
-		while chunk := bytearray(input_file.read(65535)):
-			output_bytes, nonce = ctr(chunk, key, nonce)
-			output_file.write( output_bytes )
-	
-def main():
-	SUPPORTED_MODES = ('ecb', 'cbc', 'ctr')
-	
-	# Setup argument parser
-	parser = argparse.ArgumentParser(
-		description="""
-Encrypt or decrypt a file using a Simplified DES (SDES) cipher. The block cipher is implemented as described in Appendix G of Cryptography and Network Security, Fifth Edition by William Stallings.
-
-************************************
-*** DO NOT USE FOR PRODUCTION!!! *** (That's probably obvious, though)
-************************************
-""",
-		epilog=f"""
-Example usage:
-Encryption: python3.8 {sys.argv[0]} [ecb/cbc/ctr] [-iv NUM] [--encrypt] 1010101010 plaintext.txt ciphertext.sdes
-Decryption: python3.8 {sys.argv[0]} [ecb/cbc/ctr] [-iv NUM] [--decrypt] 1010101010 ciphertext.sdes plaintext.txt
-		""",
-		formatter_class=argparse.RawDescriptionHelpFormatter
-	)
-	
-	parser.add_argument('mode', type=str, help='The cipher mode to use. [ECB, CBC]')
-	parser.add_argument('--encrypt', '-e', default=False, action='store_true')
-	parser.add_argument('--decrypt', '-d', default=False, action='store_true')
-	parser.add_argument('-iv', '--nonce', type=int, default=None)
-	parser.add_argument('key', type=str, help='The 10-bit cipher key to use. Example: 1010101010')
-	parser.add_argument('input_filename', type=str, help='The file to process.')
-	parser.add_argument('output_filename', type=str, help='The file to store the results into.')
-	
-	args = parser.parse_args()
-	
-	key = int(args.key, 2)
-	
-	# Check if provided a valid mode
-	if args.mode.lower() not in SUPPORTED_MODES:
-		print(f"'{args.mode}' mode is not supported! Please use one of the following!\n {SUPPORTED_MODES}")
-		exit()
-	
-	# Determine encrypt or decrypt
-	if args.encrypt == args.decrypt and (args.mode.lower() == 'ecb' or args.mode.lower() == 'cbc'): 
-		print("Must specify an whether to encrypt or decrypt when using ECB or CBC mode!")
-		exit()
-	else:
-		encrypt = args.encrypt
-		
-	# Generate an IV or nonce when not using ECB mode
-	if args.nonce == None and args.mode.lower() != 'ecb':
-		if not encrypt:
-			print("Must specify an IV or nonce value when decrypting in non-ECB mode!")
-			exit()
-		else:
-			iv = secrets.randbits(8)
-			print(f"IV/nonce generated is {iv}!")
-	else:
-		iv = args.nonce
-	
-	# Use ECB mode
-	if(args.mode.lower() == "ecb"): 
-		ecb_file( args.input_filename, args.output_filename, key, encrypt )
-	
-	# Use CBC mode
-	elif(args.mode.lower() == "cbc"): 
-		cbc_file( args.input_filename, args.output_filename, key, iv, encrypt )
-	
-	# Use CTR mode
-	elif(args.mode.lower() == "ctr"): 
-		ctr_file( args.input_filename, args.output_filename, key, iv )
-
-			
-
-if __name__ == "__main__":
-	main()
