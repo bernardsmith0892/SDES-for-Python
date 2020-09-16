@@ -4,7 +4,7 @@ import concurrent.futures
 
 SUPPORTED_MODES = ('ecb', 'cbc', 'ctr')
 
-def ecb(input_data, key, F, encrypt=True):
+def ecb(input_data, key, F, encrypt=True, blocksize=1):
 	""" Encrypt or decrypt the input using electronic code book (ECB) mode.
 	
 	Parameters
@@ -17,7 +17,9 @@ def ecb(input_data, key, F, encrypt=True):
 		The cipher algorithm to use.
 	encrypt : bool
 		Whether to encrypt or decrypt the data. Defaults to encryption.
-	 
+	blocksize : int
+		The blocksize of the cipher in bytes
+	
 	Returns
 	-------
 	bytearray
@@ -25,14 +27,15 @@ def ecb(input_data, key, F, encrypt=True):
 	"""	
 	
 	output = bytearray()
-	for b in input_data:
+	for i in range(0, len(input_data), blocksize):
+		b = int.from_bytes( input_data[i : i + blocksize], 'big' )
 		processed_byte = F(b, key, encrypt)
-		output.append(processed_byte)
+		output += processed_byte.to_bytes(blocksize, 'big')
 	
 	return bytes(output)
 
 
-def cbc(input_data, key, iv, F, encrypt=True):
+def cbc(input_data, key, iv, F, encrypt=True, blocksize=1):
 	""" Encrypt or decrypt the input using cipher block chaining (CBC) mode.
 	
 	Parameters
@@ -47,7 +50,9 @@ def cbc(input_data, key, iv, F, encrypt=True):
 		The cipher algorithm to use.
 	encrypt : bool
 		Whether to encrypt or decrypt the data. Defaults to encryption.
-	 
+	blocksize : int
+		The blocksize of the cipher in bytes
+		
 	Returns
 	-------
 	bytearray
@@ -57,7 +62,8 @@ def cbc(input_data, key, iv, F, encrypt=True):
 	"""	
 	
 	output = bytearray()
-	for b in input_data:
+	for i in range(0, len(input_data), blocksize):
+		b = int.from_bytes( input_data[i : i + blocksize], 'big' )
 		if( encrypt ):
 			intermediate_value = b ^ iv
 			processed_byte = F(intermediate_value, key, encrypt)
@@ -66,11 +72,11 @@ def cbc(input_data, key, iv, F, encrypt=True):
 			intermediate_value = F(b, key, encrypt)
 			processed_byte = intermediate_value ^ iv
 			iv = b
-		output.append(processed_byte)
+		output += processed_byte.to_bytes(blocksize, 'big')
 		
 	return bytes(output), iv
 	
-def ctr(input_data, key, nonce, F):
+def ctr(input_data, key, nonce, F, blocksize=1):
 	""" Encrypt or decrypt the input using counter (CTR) mode.
 	
 	Parameters
@@ -83,7 +89,9 @@ def ctr(input_data, key, nonce, F):
 		The nonce value to use.
 	F : function
 		The cipher algorithm to use.
-	 
+	blocksize : int
+		The blocksize of the cipher in bytes
+		 
 	Returns
 	-------
 	bytearray
@@ -94,15 +102,17 @@ def ctr(input_data, key, nonce, F):
 		
 	output = bytearray()
 	ctr = 0
-	for b in input_data:
+	for i in range(0, len(input_data), blocksize):
+		b = int.from_bytes( input_data[i : i + blocksize], 'big' )
+		
 		intermediate_value = F(nonce + ctr, key)
 		processed_byte = intermediate_value ^ b
 		ctr += 1
-		output.append(processed_byte)
+		output += processed_byte.to_bytes(blocksize, 'big')
 		
 	return bytes(output), (nonce + ctr)
 	
-def ecb_file(input_filename, output_filename, key, F, encrypt=True, chunk_size=65535, multithreaded=False):
+def ecb_file(input_filename, output_filename, key, F, encrypt=True, blocksize=1, chunk_size=65535, multithreaded=False, max_workers=None):
 	""" Encrypt or decrypt the file using ECB and output the result into another file.
 	
 	Parameters
@@ -119,6 +129,8 @@ def ecb_file(input_filename, output_filename, key, F, encrypt=True, chunk_size=6
 		Whether to encrypt or decrypt the data. Defaults to encryption.
 	multithreaded : bool
 		Whether to process the file in parallel. Defaults to single-threaded.
+	blocksize : int
+		The blocksize of the cipher in bytes
 	"""
 	
 	# Single-threading
@@ -126,22 +138,22 @@ def ecb_file(input_filename, output_filename, key, F, encrypt=True, chunk_size=6
 		with open(input_filename, 'rb') as input_file, open(output_filename, 'wb') as output_file:
 			# Process the file in 64kB chunks
 			while chunk := bytearray(input_file.read(chunk_size)):
-				output_file.write( ecb(chunk, key, F, encrypt) )
+				output_file.write( ecb(chunk, key, F, encrypt, blocksize) )
 	
 	# Multi-threading
 	elif multithreaded:
-		with open(input_filename, 'rb') as input_file, open(output_filename, 'wb') as output_file, concurrent.futures.ProcessPoolExecutor() as executor:
+		with open(input_filename, 'rb') as input_file, open(output_filename, 'wb') as output_file, concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
 			# Create concurrent processes for each 64kB chunk
 			ecb_processes = []
 			while chunk := bytearray(input_file.read(chunk_size)):
-				ecb_processes.append( executor.submit(ecb, chunk, key, F, encrypt) )
+				ecb_processes.append( executor.submit(ecb, chunk, key, F, encrypt, blocksize) )
 			
 			# Write the results to the output file, in order
 			for p in ecb_processes:
 				output_file.write( p.result() )
 
 				
-def cbc_file(input_filename, output_filename, key, iv, F, encrypt=True, chunk_size=65535, multithreaded=False):
+def cbc_file(input_filename, output_filename, key, iv, F, encrypt=True, blocksize=1, chunk_size=65535, multithreaded=False, max_workers=None):
 	""" Encrypt or decrypt the file using CBC and output the result into another file.
 	
 	Parameters
@@ -158,6 +170,8 @@ def cbc_file(input_filename, output_filename, key, iv, F, encrypt=True, chunk_si
 		The cipher algorithm to use.
 	encrypt : bool
 		Whether to encrypt or decrypt the data. Defaults to encryption.
+	blocksize : int
+		The blocksize of the cipher in bytes
 	multithreaded : bool
 		Whether to process the file in parallel. Defaults to single-threaded. (Decryption-only)
 	"""	
@@ -167,23 +181,23 @@ def cbc_file(input_filename, output_filename, key, iv, F, encrypt=True, chunk_si
 		with open(input_filename, 'rb') as input_file, open(output_filename, 'wb') as output_file:
 			# Process the file in 64kB chunks
 			while chunk := bytearray(input_file.read(chunk_size)):
-				output_bytes, iv = cbc(chunk, key, iv, F, encrypt)
+				output_bytes, iv = cbc(chunk, key, iv, F, encrypt, blocksize)
 				output_file.write( output_bytes )
 	
 	# Multi-threading (decryption-only)
 	elif multithreaded:
-		with open(input_filename, 'rb') as input_file, open(output_filename, 'wb') as output_file, concurrent.futures.ProcessPoolExecutor() as executor:
+		with open(input_filename, 'rb') as input_file, open(output_filename, 'wb') as output_file, concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
 			# Create concurrent processes for each 64kB chunk
 			cbc_processes = []
 			while chunk := bytearray(input_file.read(chunk_size)):
-				cbc_processes.append( executor.submit(cbc, chunk, key, iv, F, encrypt) )
-				iv = chunk[-1]
+				cbc_processes.append( executor.submit(cbc, chunk, key, iv, F, encrypt, blocksize) )
+				iv = int.from_bytes( chunk[-blocksize:], 'big' )
 			
 			# Write the results to the output file, in order
 			for p in cbc_processes:
 				output_file.write( p.result()[0] )
 			
-def ctr_file(input_filename, output_filename, key, nonce, F, chunk_size=65535, multithreaded=False):
+def ctr_file(input_filename, output_filename, key, nonce, F, blocksize=1, chunk_size=65535, multithreaded=False, max_workers=None):
 	""" Encrypt or decrypt the file using CTR and output the result into another file.
 	
 	Parameters
@@ -198,6 +212,8 @@ def ctr_file(input_filename, output_filename, key, nonce, F, chunk_size=65535, m
 		The nonce value to use.
 	F : function
 		The cipher algorithm to use.
+	blocksize : int
+		The blocksize of the cipher in bytes
 	multithreaded : bool
 		Whether to process the file in parallel. Defaults to single-threaded.
 	"""	
@@ -207,17 +223,17 @@ def ctr_file(input_filename, output_filename, key, nonce, F, chunk_size=65535, m
 		with open(input_filename, 'rb') as input_file, open(output_filename, 'wb') as output_file:
 			# Process the file in 64kB chunks
 			while chunk := bytearray(input_file.read(chunk_size)):
-				output_bytes, nonce = ctr(chunk, key, nonce, F)
+				output_bytes, nonce = ctr(chunk, key, nonce, F, blocksize)
 				output_file.write( output_bytes )
 	
 	# Multi-threading	
 	elif multithreaded:
-		with open(input_filename, 'rb') as input_file, open(output_filename, 'wb') as output_file, concurrent.futures.ProcessPoolExecutor() as executor:
+		with open(input_filename, 'rb') as input_file, open(output_filename, 'wb') as output_file, concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
 			# Create concurrent processes for each 64kB chunk
 			ctr_processes = []
 			offset = 0
 			while chunk := bytearray(input_file.read(chunk_size)):
-				ctr_processes.append( executor.submit(ctr, chunk, key, nonce + offset, F) )
+				ctr_processes.append( executor.submit(ctr, chunk, key, nonce + offset, F, blocksize) )
 				offset += chunk_size
 			
 			# Write the results to the output file, in order
