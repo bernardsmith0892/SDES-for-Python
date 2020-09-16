@@ -45,18 +45,22 @@ Decryption: python3.8 ./main.py cbc -iv 100 --decrypt --concurrent 1010101010 ci
 
 ### Original
 ![Original](Tux.bmp "Original Image")
+
 *Shannon entropy - 3.382765*
 
 ### Electronic Code Book (ECB)
 ![Original](Tux.ecb.bmp "ECB Image")
+
 *Shannon entropy - 3.384269*
 
 ### Cipher Block Chaining (CBC)
 ![Original](Tux.cbc.bmp "CBC Image")
+
 *Shannon entropy - 7.992329*
 
 ### Counter (CTR)
 ![Original](Tux.ctr.bmp "CTR Image")
+
 *Shannon entropy - 7.999841*
 
 Created comparison images with:
